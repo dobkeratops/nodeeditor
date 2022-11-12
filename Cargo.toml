@@ -7,5 +7,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+num-traits = {version = "0.2.15"}
 sdl2 = {version  = "0.35.2", features=["unsafe_textures"]}
 image = { version = "0.23.14", default-features = false, features = ["jpeg","png"] } 

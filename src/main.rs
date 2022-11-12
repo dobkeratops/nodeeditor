@@ -1,30 +1,58 @@
 #![allow(unused_variables)]
 extern crate sdl2;
 extern crate image;
+extern crate num_traits; 
 use image::GenericImageView;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
-use std::time::Duration;
-//use sdl2::image::LoadTexture;
+use std::ops::{Add,Sub,Mul,Div,Neg,Rem};
 
-type Point2d= (i32,i32);
-fn v2add(a:Point2d,b:Point2d)->Point2d{(a.0+b.0, a.1+b.1)}
-fn v2sub(a:Point2d,b:Point2d)->Point2d{(a.0-b.0, a.1-b.1)}
-fn v2div(a:Point2d,d:i32)->Point2d{(a.0/d, a.1/d)}
-fn v2manhattan_dist(a:Point2d,b:Point2d)->i32 {
-    let ofs=v2sub(b,a);
-    let adx=ofs.0 .abs();
-    let ady=ofs.1 .abs();
-    return adx+ady; // whatever dist that is.
+//use sdl2::image::LoadTexture;
+type V2<T> = (T,T);
+type V2i = V2<i32>;
+type V2f = V2<f32>;
+type V2u = V2<usize>;
+type Vec2 = V2i;
+fn v2make<T>(a:T,b:T)->V2<T> {(a,b)}
+trait VecElem : Copy+PartialOrd+std::fmt::Debug+Mul<Output=Self> + Add<Output=Self>+ Sub<Output=Self>+ Div<Output=Self>+Rem<Output=Self>+Div<Output=Self>+Neg<Output=Self> {}
+impl VecElem for i32{}
+impl VecElem for f32{}
+impl VecElem for isize{}
+fn v2add<T:VecElem>(a:V2<T>,b:V2<T>)->V2<T>{v2make(a.0+b.0, a.1+b.1)}
+fn v2sub<T:VecElem >(a:V2<T>,b:V2<T>)->V2<T>{v2make(a.0-b.0, a.1-b.1)}
+fn v2div<T:VecElem>(a:V2<T>,d:T)->V2<T>{v2make(a.0/d, a.1/d)}
+fn v2mod<T:VecElem>(a:V2<T>,d:T)->V2<T>{v2make(a.0%d, a.1%d)}
+fn v2dot<T:VecElem>(a:V2<T>,b:V2<T>)->T{v2hsum(v2mul(a,b))}
+fn v2hsum<T:VecElem>(a:V2<T>)->T{a.0+a.1}
+fn v2lerp<T:VecElem>(a:V2<T>,b:V2<T>,f:T)->V2<T>{v2madd(a,v2sub(b,a),f)}
+fn v2madd<T:VecElem>(a:V2<T>,b:V2<T>,f:T)->V2<T>{v2make(a.0 + b.0*f, a.1+ b.1*f)}
+fn v2hmul<T:VecElem>(a:V2<T>)->T{a.0*a.1}
+fn v2maxcomp<T:VecElem>(a:V2<T>)->(usize,T){if a.0 > a.1 {(0,a.0)}else{(1,a.1)}}
+fn v2mul<T:VecElem>(a:V2<T>,b:V2<T>)->V2<T>{v2make(a.0*b.0, a.1*b.1)}
+fn minp<T:PartialOrd>(a:T,b:T)->T{if a<b{a} else {b}}
+fn maxp<T:PartialOrd>(a:T,b:T)->T{if a>b{a} else {b}}
+fn v2max<T:VecElem>(a:V2<T>,b:V2<T>)->V2<T>{v2make(maxp(a.0,b.0), maxp(a.1,b.1))}
+fn v2min<T:VecElem>(a:V2<T>,b:V2<T>)->V2<T>{v2make(minp(a.0,b.0), minp(a.1,b.1))}
+fn v2scale<T:VecElem>(a:V2<T>,f:T)->V2<T>{v2make(a.0*f, a.1*f)}
+fn v2abs<T:VecElem+num_traits::Signed>(a:V2<T>)->V2<T>{v2make(a.0 .abs(), a.1 .abs())}
+fn v2ymx<T:VecElem>(a:V2<T>)->V2<T>{v2make(a.1,-a.0)}
+fn v2myx<T:VecElem>(a:V2<T>)->V2<T>{v2make(-a.1,a.0)}
+fn v2mxmy<T:VecElem>(a:V2<T>)->V2<T>{v2make(-a.0,-a.1)}
+
+fn v2manhattan_dist<T:VecElem+num_traits::Signed>(a:V2<T>,b:V2<T>)->T {
+    v2hsum(v2abs(v2sub(b,a)))
 }
-fn v2muldiv(a:Point2d,b:Point2d,m:i32,d:i32)->Point2d{( ((a.0 as i64*m as i64)/d as i64) as i32, ((a.0 as i64*m as i64)/d as i64) as i32) }
+fn v2sqr<T:VecElem>(a:V2<T>)->T{v2dot(a,a)}
+fn v2distSqr<T:VecElem>(a:V2<T>,b:V2<T>)->T{v2sqr(v2sub(b,a))}
+
+fn v2muldiv<T:VecElem>(a:V2<T>,m:T,d:T)->V2<T>{ v2make( (a.0*m)/d, (a.0*m)/d ) }
 
 enum EdState{
     None,
-    DraggingFrom(Point2d,DragType),
+    DraggingFrom(Vec2,DragType),
 }
 type NodeID=usize;
 #[derive(Debug,Copy,Clone)]
@@ -33,21 +61,49 @@ enum DragType{
     DrawEdge()
 }
 
+enum NodeType {
+    MulAdd,Add,Sub,Mul,Div,Neg,Lerp,Max,Min,Clamp,
+}
+impl Default for NodeType{fn default()->Self{Self::MulAdd}}
+impl NodeType {
+    fn name(&self)->&'static str {
+        match self{
+            Self::Lerp=>&"Lerp",
+            Self::Add=>&"Add",
+            Self::MulAdd=>&"MulAdd",
+            Self::Clamp=>&"Clamp",
+            Self::Mul=>&"Mul",
+            Self::Div=>&"Div",
+            Self::Sub=>&"Sub",
+            Self::Min=>&"Min",
+            Self::Max=>&"Max",
+            Self::Neg=>&"Neg",
+        }
+    }
+    fn num_input_slots(&self)->usize{
+        match self {
+            Self::Lerp|Self::MulAdd|Self::Clamp=>3,
+            Self::Neg=>1,
+            _=>2
+        }
+    }
+}
 struct Node {
-    pos:Point2d,
-    size:Point2d,
+    typ:NodeType,
+    pos:Vec2,
+    size:Vec2,
     color:[u8;4],
     text:String,
 }
 impl Node {
     fn rect(&self)->Rect{Rect::new(self.pos.0,self.pos.1, self.size.0 as u32,self.size.1 as u32)}
-    fn centre(&self)->Point2d{v2add(self.pos, v2div(self.size,2))}
-    fn centre_left(&self)->Point2d{v2add(self.pos, (0,self.size.1/2))}
-    fn centre_right(&self)->Point2d{v2add(self.pos, (self.size.0,self.size.1/2))}
+    fn centre(&self)->Vec2{v2add(self.pos, v2div(self.size,2))}
+    fn centre_left(&self)->Vec2{v2add(self.pos, (0,self.size.1/2))}
+    fn centre_right(&self)->Vec2{v2add(self.pos, (self.size.0,self.size.1/2))}
 }
 trait Contains<X>{fn contains(&self,x:X)->bool;}
-impl Contains<Point2d> for Rect {
-    fn contains(&self, pos:Point2d)->bool {
+impl Contains<Vec2> for Rect {
+    fn contains(&self, pos:Vec2)->bool {
         pos.0 > self.left() && pos.0 < self.right() && pos.1 > self.top() && pos.1<self.bottom()
     }
 }
@@ -56,7 +112,7 @@ struct Font{
     tex:std::cell::Cell<sdl2::render::Texture>,
     xlat:[u8;256],
 }
-fn load_texture(filename:&str)->Result<(Vec<u8>,(usize,usize),usize),()>{
+fn load_texture(filename:&str)->Result<(Vec<u8>,V2u,usize),()>{
     let img=image::open(filename).expect("texfont");
 
     let conv=|(a,b)| (a as usize, b as usize); 
@@ -90,7 +146,7 @@ impl Font{
             xlat
          }
     }
-    fn draw_text(&mut self, canvas:&mut sdl2::render::WindowCanvas, pos:Point2d,color:[u8;4], text:&str){
+    fn draw_text(&mut self, canvas:&mut sdl2::render::WindowCanvas, pos:Vec2,color:[u8;4], text:&str){
         let mut pos = pos;
         for c in text.chars(){
             let index=self.xlat[c as usize] as i32;
@@ -109,9 +165,9 @@ impl Font{
         }
     }
 }
-fn draw_tri(canvas:&mut WindowCanvas,pos:Point2d, dir:Point2d){
+fn draw_tri(canvas:&mut WindowCanvas,pos:Vec2, dir:Vec2){
     let perp=(dir.1,-dir.0);
-    let vertices:[Point2d;3]=[v2add(pos,dir), v2add(pos,perp),v2sub(pos,perp)];
+    let vertices:[Vec2;3]=[v2add(pos,dir), v2add(pos,perp),v2sub(pos,perp)];
     for (s,e) in [(0,1),(1,2),(2,0)]{
         canvas.draw_line(vertices[s],vertices[e]);
     }
@@ -126,7 +182,7 @@ struct World {
     edges:Vec<Edge>
 }
 impl World {
-    fn pick_node(&self, pos:Point2d)->Option<usize>{
+    fn pick_node(&self, pos:Vec2)->Option<usize>{
         for (i,n) in self.nodes.iter().enumerate(){
             if n.rect().contains(pos){
                 return Some(i)
@@ -134,7 +190,7 @@ impl World {
         }
         return None
     }
-    fn drag_end(&mut self, start:Point2d, end:Point2d, dt:DragType){
+    fn drag_end(&mut self, start:Vec2, end:Vec2, dt:DragType){
         println!("dragged{:?},{:?}",start,end);
         match dt{
             DragType::MoveNode(_id)=>{}
@@ -150,7 +206,7 @@ impl World {
                             println!("can't link node to self");
                         }
                     }
-                    _=>{dbg!(self.create_node_at(end, &format!("Node{:?}",self.nodes.len()), [255,255,128,255]));}
+                    _=>{dbg!(self.create_node_at(end, &format!("Node{:?}",self.nodes.len()), [255,255,128,255], NodeType::Mul));}
                 }
             }
         }
@@ -158,7 +214,7 @@ impl World {
     fn create_edge(&mut self, si:NodeID,ei:NodeID){
         self.edges.push(Edge{start:si,end:ei})
     }
-    fn pick_closest_node(&mut self, pt:Point2d)->NodeID{
+    fn pick_closest_node(&mut self, pt:Vec2)->NodeID{
         assert!(self.nodes.len()>0);
         let mut bestdist=10000000;
         let mut bestnode=0;
@@ -172,9 +228,9 @@ impl World {
         return bestnode;
     }
 
-    fn create_node_at(&mut self, pt:Point2d, caption:&str, color:[u8;4])->NodeID{
-        let ns=(64,64);
-        self.nodes.push(Node{pos:v2sub(pt,v2div(ns,2)), size:ns, text:caption.to_string(), color});
+    fn create_node_at(&mut self, pt:Vec2, caption:&str, color:[u8;4],typ:NodeType)->NodeID{
+               let ns=(64,64);
+        self.nodes.push(Node{typ,pos:v2sub(pt,v2div(ns,2)), size:ns, text:caption.to_string(), color});
         self.nodes.len()-1
     }
 }
@@ -209,20 +265,21 @@ pub fn main() -> Result<(), String> {
     let mut event_pump = sdl_context.event_pump()?;
 
     let mut state =EdState::None;
-    let mut mouse_pos:Point2d =(100,100);
-    let mut some_pos=(300,100);
+    let mut mouse_pos =v2make(100,100);
+    let mut some_pos=v2make(300,100);
 
 
     let mut world = World{
-        nodes:vec![Node{pos:(100,150),size:(64,64),color:[255,0,0,255],text:format!("node0")}, Node{pos:(200,150), size:(64,64), color:[0,255,255,255],text:format!("node1")} ],
+        nodes:vec![Node{typ:NodeType::Mul,pos:v2make(100,150),size:v2make(64,64),color:[255,0,0,255],text:format!("node0")}, Node{typ:NodeType::Add, pos:v2make(200,150), size:v2make(64,64), color:[0,255,255,255],text:format!("node1")} ],
         edges:vec![],
     };
-    let mut tc= canvas.texture_creator();
+    let mut tc:sdl2::render::TextureCreator<sdl2::video::WindowContext> = canvas.texture_creator();
     let mut tex = tc.create_texture(None, sdl2::render::TextureAccess::Streaming, 64,64).expect("tex");
     let mut font = Font::new(&mut tc, "assets/font16.png"," _ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789()[]{}+-<>@./\\#!?&*\",:;£$");
 
+    let x:Option<sdl2::render::TextureCreator<sdl2::video::WindowContext>> = None;
     
-    let mut mouse_delta:Point2d = (0,0);
+    let mut mouse_delta = v2make(0,0);
     'running: loop {
         mouse_delta=(0,0);
         for event in event_pump.poll_iter() {
@@ -298,7 +355,7 @@ pub fn main() -> Result<(), String> {
         for node in world.nodes.iter() {
             canvas.set_draw_color(rgb(node.color));
             canvas.draw_rect(node.rect());
-            font.draw_text(&mut canvas, node.pos, node.color, &node.text);
+            font.draw_text(&mut canvas, node.pos, node.color, &node.typ.name());
         }
         for edge in world.edges.iter() {
             canvas.set_draw_color((192,192,192));
