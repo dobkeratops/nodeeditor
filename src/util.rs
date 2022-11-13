@@ -29,7 +29,7 @@ pub fn v2dot<T:VecElem>(a:V2<T>,b:V2<T>)->T{v2hsum(v2mul(a,b))}
 pub fn v2hsum<T:VecElem>(a:V2<T>)->T{a.0+a.1}
 pub fn v2lerp<T:VecElem>(a:V2<T>,b:V2<T>,f:T)->V2<T>{v2madd(a,v2sub(b,a),f)}
 pub fn v2madd<T:VecElem>(a:V2<T>,b:V2<T>,f:T)->V2<T>{v2make(a.0 + b.0*f, a.1+ b.1*f)}
-pub fn v2hmul<T:VecElem>(a:V2<T>)->T{a.0*a.1}
+pub fn v2hmul<T:Mul<Output=T>>(a:V2<T>)->T{a.0*a.1}
 pub fn v2maxcomp<T:VecElem>(a:V2<T>)->(usize,T){if a.0 > a.1 {(0,a.0)}else{(1,a.1)}}
 pub fn v2mul<T:VecElem>(a:V2<T>,b:V2<T>)->V2<T>{v2make(a.0*b.0, a.1*b.1)}
 pub fn minp<T:PartialOrd>(a:T,b:T)->T{if a<b{a} else {b}}
