@@ -334,6 +334,11 @@ impl World {
         }
         return (bestslot,bestpos);
     }
+    fn load_image_at(&mut self, pt:Vec2, filename:String) {
+        let img = load_texture(&filename).expect("loading bitmap");
+        let nt=Value(SlotTypeVal::ImageRGBA(image_from_bitmap(&img)));
+        self.create_node_at(pt,&filename,[255,192,128,255], nt);
+    }
 
     fn create_node_at(&mut self, pt:Vec2, caption:&str, color:[u8;4],typ:NodeType)->NodeID{
                let ns=(128,128);
@@ -476,6 +481,24 @@ impl World {
     }
 }
 
+fn image_from_bitmap(bitmap:&(Vec<u8>,V2u,usize)) ->Image2dRGBA{
+    let data=&bitmap.0;
+    let size = bitmap.1;
+    let channels = bitmap.2;
+    let mut buffer:Vec<[f32;4]> = vec![default(); v2hmul(size)*4];
+
+    let ccopy = std::cmp::min(4,channels);
+    for i in 0..data.len()/channels {
+
+        for c in 0..ccopy {
+            buffer[i][c] = data[i*channels+channels-1-c] as f32 * (1.0/255.0);
+        }
+        for c in ccopy..4{
+            buffer[i][c] = 1.0;
+        }
+    }
+    Image2D{data:buffer, size:size}
+}
 
 fn read_string(prompt:&str)->String{
     println!("{}",prompt);
@@ -540,15 +563,15 @@ pub fn main() -> Result<(), String> {
                     }
                 }
                 Event::KeyDown {keycode: Some(Keycode::Num1),..} => node_type=Some(Function(FNodeType::img_add)), 
-/*                Event::KeyDown {keycode: Some(Keycode::Num2),..} => node_type=Some(NodeType::img_mul), 
-                Event::KeyDown {keycode: Some(Keycode::Num3),..} => node_type=Some(NodeType::img_sin), 
-                Event::KeyDown {keycode: Some(Keycode::Num4),..} => node_type=Some(NodeType::img_fractal), 
-                Event::KeyDown {keycode: Some(Keycode::Num5),..} => node_type=Some(NodeType::img_add_mul_const), 
-                Event::KeyDown {keycode: Some(Keycode::Num6),..} => node_type=Some(NodeType::img_warp), 
-                Event::KeyDown {keycode: Some(Keycode::Num7),..} => node_type=Some(NodeType::img_blend), 
-                Event::KeyDown {keycode: Some(Keycode::Num8),..} => node_type=Some(NodeType::img_min), 
-                Event::KeyDown {keycode: Some(Keycode::Num9),..} => node_type=Some(NodeType::img_max), 
-*/                
+                Event::KeyDown {keycode: Some(Keycode::Num2),..} => node_type=Some(Function(FNodeType::img_mul)), 
+                Event::KeyDown {keycode: Some(Keycode::Num3),..} => node_type=Some(Function(FNodeType::img_sin)), 
+                Event::KeyDown {keycode: Some(Keycode::Num4),..} => node_type=Some(Function(FNodeType::img_fractal)), 
+                Event::KeyDown {keycode: Some(Keycode::Num5),..} => node_type=Some(Function(FNodeType::img_grainmerge)), 
+                //Event::KeyDown {keycode: Some(Keycode::Num6),..} => node_type=Some(Function(FNodeType::img_warp)), 
+                Event::KeyDown {keycode: Some(Keycode::Num7),..} => node_type=Some(Function(FNodeType::img_blend)), 
+                Event::KeyDown {keycode: Some(Keycode::Num8),..} => node_type=Some(Function(FNodeType::img_min)), 
+                Event::KeyDown {keycode: Some(Keycode::Num9),..} => node_type=Some(Function(FNodeType::img_max)), 
+                
                 Event::MouseButtonDown { timestamp, window_id, which, mouse_btn, clicks, x, y }=>{
                         state=EdState::DraggingFrom(
                             (x,y),
@@ -567,6 +590,9 @@ pub fn main() -> Result<(), String> {
                 Event::MouseMotion { timestamp, window_id, which, mousestate, x, y, xrel, yrel }=>{
                     mouse_pos=v2make(x,y);
                     mouse_delta= v2make(xrel,yrel);
+                }
+                Event::DropFile { timestamp, window_id, filename }=>{
+                    world.load_image_at(mouse_pos, filename);
                 }
                 _ => {}
             }
