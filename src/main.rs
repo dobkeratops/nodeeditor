@@ -141,7 +141,6 @@ impl Node {
                 }
                 SlotTypeVal::ImageLuma(x)=>{
                     
-
                 }
 
                 SlotTypeVal::Empty(_)=>{
