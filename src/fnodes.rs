@@ -39,15 +39,15 @@ macro_rules! define_fnodes{
                 ),*}
 
             }
-			pub fn num_input_slots(&self)->usize {
+			pub fn num_inputs(&self)->usize {
 				self.get_param_list().len()
 			}
 			// initially only support one output.
 			pub fn num_outputs(&self)->usize {1}
-			pub fn num_slots(&self)->usize{self.num_input_slots()+self.num_outputs()}
+			pub fn num_slots(&self)->usize{self.num_inputs()+self.num_outputs()}
 
 			pub fn eval(&self, args:&[SlotTypeRef])->SlotTypeVal {
-				assert!(args.len() == self.num_input_slots());
+				assert!(args.len() == self.num_inputs());
 				let mut arg_iter=args.iter();
 				
 				match self{

@@ -51,15 +51,15 @@ impl NodeType {
         Function(x)=>x.name(),
         Value(x)=>x.type_id().name()
     }}
-    fn num_input_slots(&self)->usize{match self {
-        Function(x)=>x.num_input_slots(),
+    fn num_inputs(&self)->usize{match self {
+        Function(x)=>x.num_inputs(),
         Value(x)=>0,
     }}
     fn num_outputs(&self)->usize{match self{
         Function(x)=>x.num_outputs(),
         Value(x)=>1,
     }}
-    fn num_slots(&self)->usize{self.num_input_slots()+self.num_outputs()}
+    fn num_slots(&self)->usize{self.num_inputs()+self.num_outputs()}
 }
 
 type OptRc<T> = Option<Rc<T>>;
@@ -260,7 +260,7 @@ impl World {
     }
     fn slot_pos(&self,sa:&SlotAddr)->Vec2{
         let node=&self.nodes[sa.node];
-        let inpn=node.typ.num_input_slots();
+        let inpn=node.typ.num_inputs();
         let (dx,syf,ns)=if sa.slot <inpn {
             (0,sa.slot,inpn)
         } else {
@@ -358,7 +358,7 @@ impl World {
         // prepare input value buffer.
         let mut node_inputs:Vec<Vec<OptRc<SlotTypeVal>>> = Vec::new();
         for node in self.nodes.iter_mut(){
-            node_inputs.push( vec![None; node.typ.num_input_slots()]);
+            node_inputs.push( vec![None; node.typ.num_inputs()]);
         }
         
         // gather inputs per node,through edges
@@ -368,7 +368,7 @@ impl World {
             let dstnode=&self.nodes[edge.end.node];
             assert!(srcnode.typ.num_outputs()==1);
             
-            //assert_less!(edge.end.slot, dstnode.typ.num_input_slots());
+            //assert_less!(edge.end.slot, dstnode.typ.num_inputs());
             
             if let Some(val)=&srcnode.cached{
                 node_inputs[ edge.end.node ] [edge.end.slot] = Some(Rc::clone(val));
