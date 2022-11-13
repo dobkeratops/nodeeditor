@@ -116,6 +116,8 @@ macro_rules! slot_types{
 				$ename(&'a $slot_type)
 			),*
 		}
+		
+		pub enum SlotTypeId {$($ename),*}
 
 		//the trait bound `&Image2D<f32, 4>: From<&SlotTypeRef<'_>>` is not satisfie
 		$(impl<'a> From<SlotTypeRef<'a> > for &'a $slot_type{
@@ -135,10 +137,23 @@ macro_rules! slot_types{
 		}
 
 		impl SlotTypeVal{
-			pub fn name(&self)->&'static str{
+			pub fn type_id(&self)->SlotTypeId {
+				match self {
+					$(Self::$ename(_)=> SlotTypeId::$ename),*
+				}
+			}
+		}
+		impl<'a> SlotTypeRef<'a> {
+			pub fn type_id(&self)->SlotTypeId {
+				match self {
+					$(Self::$ename(_)=> SlotTypeId::$ename),*
+				}
+			}
+		}
+		impl SlotTypeId {
+			pub fn name(&self)->&'static str {
 				match self{
-					$(Self::$ename(_) => &stringify!($ename)),*
-
+					$(Self::$ename=>&stringify!($ename)),*
 				}
 			}
 		}
@@ -206,19 +221,16 @@ macro_rules! slot_types{
 
 slot_types! {
 	enum SlotTypeVal {
-		Empty(Empty),
+		Filename(String),
 		FloatDefaultOne(FloatDefaultOne),
 		FloatDefaultZero(FloatDefaultZero),
 		ImageRGBA(Image2D<f32,4>),
 		ImageLuma(Image2D<f32,1>)
 	}
 }
-#[derive(Default, Clone, Debug,Serialize,Deserialize)]
-pub struct Empty();
-
-impl Default for SlotTypeVal {
-	fn default()->Self{Self::Empty(Empty())}
-}
+//impl Default for SlotTypeVal {
+	//fn default()->Self{Self::Empty(())}
+//}
 
 pub struct Rnd(pub u32);
 impl Rnd{

@@ -49,7 +49,7 @@ use NodeType::*;
 impl NodeType {
     fn name(&self)->&'static str {match self{
         Function(x)=>x.name(),
-        Value(x)=>x.name()
+        Value(x)=>x.type_id().name()
     }}
     fn num_input_slots(&self)->usize{match self {
         Function(x)=>x.num_input_slots(),
@@ -129,6 +129,7 @@ impl Node {
         if let Some(x) = &self.cached {
             let x:&SlotTypeVal =&*x;
             match x {
+                SlotTypeVal::Filename(x)=>f.draw_text(wc, pos, [192,192,192,255], &x),
                 SlotTypeVal::FloatDefaultOne(x)=>draw_float(from(x),wc,pos,f),
                 SlotTypeVal::FloatDefaultZero(x)=>draw_float(from(x),wc,pos,f),
                 SlotTypeVal::ImageRGBA(b)=>{
@@ -141,10 +142,6 @@ impl Node {
                 }
                 SlotTypeVal::ImageLuma(x)=>{
                     
-                }
-
-                SlotTypeVal::Empty(_)=>{
-
                 }
             }
         }
@@ -356,7 +353,7 @@ impl World {
     }
 
     fn eval(&mut self) {
-        let empty=somerc(Empty());
+        
         // brute force
         // prepare input value buffer.
         let mut node_inputs:Vec<Vec<OptRc<SlotTypeVal>>> = Vec::new();
@@ -378,28 +375,27 @@ impl World {
             }
 
         }
-        let empty= SlotTypeVal::Empty(Empty());
+        
         for (id,node) in self.nodes.iter_mut().enumerate(){
             node.cached = match &node.typ {
                 Value(x)=>{somerc(x.clone())},   // todo - this should be Rc or 
-                Function(f)=>Self::eval_node(f, &node_inputs[id], &empty)
+                Function(f)=>Self::eval_node(f, &node_inputs[id])
             }
         }
     }
 
-    fn eval_node<'a>(f:&FNodeType, inputs:&'a [OptRc<SlotTypeVal>], empty:&'a SlotTypeVal)->Option<Rc<SlotTypeVal>> {
+    fn eval_node<'a>(f:&FNodeType, inputs:&'a [OptRc<SlotTypeVal>])->Option<Rc<SlotTypeVal>> {
 
-        let mut any_empty=false;
-        let inputs_xlat:Vec<SlotTypeRef<'a>> =inputs.iter().map(
-            |sv:&OptRc<SlotTypeVal>|->SlotTypeRef<'a>{
-            match sv{
-                None=>{any_empty=true;SlotTypeRef::from(empty)},
-                Some(x)=>SlotTypeRef::from(&**x)
-            }
-        }).collect::<Vec<_>>();
-        //dbg!(&inputs_xlat);
-        if any_empty{None}
-        else{somerc(f.eval(&inputs_xlat))}
+        let mut inputs_xlat: Vec<SlotTypeRef<'a>> = Vec::with_capacity(inputs.len());
+        for (i,inval) in inputs.iter().enumerate() {
+            inputs_xlat.push(
+                match inval{
+                    None=>{return None;},
+                    Some(x)=>SlotTypeRef::from(&**x)
+                }
+            )
+        }
+        somerc(f.eval(&inputs_xlat))
     }
 
     fn example_scene()->Self {
