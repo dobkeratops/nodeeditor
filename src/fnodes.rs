@@ -1,28 +1,44 @@
 #![allow(non_camel_case_types)]
+#![allow(unused_imports)]
 use serde::{Serialize, Deserialize};
 use std::ops::Index;
 use super::*;
 
 macro_rules! define_fnodes{
-    // quite fiddly to write but worth the effort!
-    (
+    (	
         $(
             pub fn $fnname:ident( 
-                $($argname:ident : $argtype:ty),*
-            )-> $returntype:ty
+                $($argname:ident : &$argtype:ident),*
+            )-> $returntype:ident
             $fnbody:block
         )*
 	)=>
-    {
+	{
 		// implement the actual functions, they were input to this macro
-		$(pub fn $fnname($($argname:$argtype),*)->$returntype {$fnbody})*
+		$(pub fn $fnname($($argname:&$argtype),*)->$returntype {$fnbody})*
 
         #[derive(Clone, Debug, Copy, PartialEq, Serialize, Deserialize)]
         pub enum FNodeType{
             $($fnname),*
         }
+		#[derive(Debug)]
+		// reflected descriptions for UI.
+		pub struct SlotDesc{pub name:&'static str, pub typeid:SlotTypeId}
+		#[derive(Debug)]
+		pub struct FNodeTypeDesc{pub name:&'static str, pub inputs:&'static [SlotDesc],pub outputs:&'static [SlotDesc]}
 
         impl FNodeType {
+			pub fn node_types()->&'static[FNodeTypeDesc] {
+				&[$(
+					FNodeTypeDesc{
+						name:stringify!($fnname),
+						inputs:&[$(
+							SlotDesc{name:stringify!($argname),typeid:SlotTypeId::$argtype}
+						),*],
+						outputs:&[SlotDesc{name:"output",typeid:SlotTypeId::$returntype}]
+					}
+				),*]
+			}
             pub fn name(&self)->&'static str {
                 match self {$(
                     FNodeType::$fnname => stringify!($fnname)
@@ -33,13 +49,16 @@ macro_rules! define_fnodes{
                     FNodeType::$fnname=>stringify!($returntype)
                 ),*}
             }
-            pub fn get_param_list(&self)->&'static [(&'static str,&'static str)]{
+            pub fn get_param_list(&self)->&'static [SlotDesc]{
                 match self {$(
-                    FNodeType::$fnname=>&[$( (stringify!($argname),stringify!($argtype))  ),*]
+                    FNodeType::$fnname=>&[$(
+						SlotDesc{name:stringify!($argname),typeid:SlotTypeId::$argtype}
+					),*]
                 ),*}
+			}
 
-            }
 			pub fn num_inputs(&self)->usize {
+				// static - we hope the optimizer can figure this out..
 				self.get_param_list().len()
 			}
 			// initially only support one output.
@@ -58,7 +77,7 @@ macro_rules! define_fnodes{
 								let optarg:Option<&SlotTypeRef> = arg_iter.next();
 								let enum_arg:&SlotTypeRef=optarg.unwrap();
 								//let actual_arg:&$argtype = (<&$argtype>::from(*enum_arg));
-								let actual_arg:$argtype  = (*enum_arg).into();
+								let actual_arg:&$argtype  = (*enum_arg).into();
 								//<$argtype>::from(arg)
 								actual_arg
 							}),*
@@ -88,20 +107,17 @@ fn dump_node_types(){
     });
     println!("\n");
 }
-#[derive(Clone,Debug,Serialize,Deserialize)]
 
-pub struct FloatDefaultOne(pub f32);
-#[derive(Clone,Debug,Serialize,Deserialize)]
-pub struct FloatDefaultZero(pub f32);
 
-impl From<f32> for FloatDefaultOne{fn from(x:f32)->Self{Self(x)}}
-impl From<f32> for FloatDefaultZero{fn from(x:f32)->Self{Self(x)}}
 
-impl From<&FloatDefaultOne> for f32{fn from(x:&FloatDefaultOne)->Self{x.0}}
-impl From<&FloatDefaultZero> for f32{fn from(x:&FloatDefaultZero)->Self{x.0}}
+#[derive(Copy,Clone,Debug,Serialize,Deserialize)]
+pub struct Float32(pub f32);
 
-impl Default for FloatDefaultOne{fn default()->Self{Self(1.0)}}
-impl Default for FloatDefaultZero{fn default()->Self{Self(0.0)}}
+impl From<f32> for Float32{fn from(x:f32)->Self{Self(x)}}
+impl From<&Float32> for f32{fn from(x:&Float32)->Self{x.0}}
+
+impl Default for Float32{fn default()->Self{Self(0.0)}}
+
 
 // macro rolls reference and type version of a multi-type variant
 // and conversions to & from plain values
@@ -117,6 +133,7 @@ macro_rules! slot_types{
 			),*
 		}
 		
+		#[derive(Debug)]
 		pub enum SlotTypeId {$($ename),*}
 
 		//the trait bound `&Image2D<f32, 4>: From<&SlotTypeRef<'_>>` is not satisfie
@@ -170,7 +187,7 @@ macro_rules! slot_types{
 		// and implements blanket conversion for the any slot-type enum.
 		// TODO - is there a way to constrain compat check?
 		//
-		//he trait bound `FloatDefaultZero: From<SlotTypeRef<'_>>` is not satisfied
+		//he trait bound `Float32: From<SlotTypeRef<'_>>` is not satisfied
 		/*
 		$(
 			
@@ -190,7 +207,7 @@ macro_rules! slot_types{
 			}
 
 		)*
-		//he trait bound `FloatDefaultZero: From<SlotTypeRef<'_>>` is not satisfied
+		//he trait bound `Float32: From<SlotTypeRef<'_>>` is not satisfied
 /* 			impl<'a> From<&'a $slot_type> for SlotTypeRef<'a> {
 				fn from(&'a self)->SlotTypesRef<'a> {
 					SlotTypeRef::$ename(self)
@@ -221,12 +238,16 @@ macro_rules! slot_types{
 
 slot_types! {
 	enum SlotTypeVal {
-		Filename(String),
-		FloatDefaultOne(FloatDefaultOne),
-		FloatDefaultZero(FloatDefaultZero),
-		ImageRGBA(Image2D<f32,4>),
-		ImageLuma(Image2D<f32,1>)
+		Filename(Filename ),
+		Float32(Float32),
+		Image2dRGBA(Image2dRGBA),
+		Image2dLuma(Image2dLuma)
 	}
+}
+#[derive(Debug,Clone,PartialEq,Default)]
+pub struct Filename(pub String);
+impl<'a> From<&'a Filename> for &'a str {
+	fn from(src:&'a Filename)->Self {&src.0}
 }
 //impl Default for SlotTypeVal {
 	//fn default()->Self{Self::Empty(())}
@@ -251,8 +272,8 @@ impl ImgComp for i16{}
 
 
 #[derive(Default, Clone, Debug)]
-pub struct Image2D<T:ImgComp=f32,const Ch:usize=4>{
-	pub data:Vec<[T;Ch]>,
+pub struct Image2D<T:ImgComp=f32,const CH:usize=4>{
+	pub data:Vec<[T;CH]>,
 	pub size:V2u
 }
 
@@ -291,7 +312,20 @@ impl<T:ImgComp+DeserializeOwned,const C:usize> Image2D<T,C> {
 	pub fn linear_index(&self, pos:V2u)->usize{pos.0 + pos.1 * self.size.0}
 	pub fn at(&self,pos:V2u)->&[T;C]{ let i=self.linear_index(pos); &self.data[i] }
 	pub fn at_mut(&mut self,pos:V2u)->&mut [T;C]{ let i=self.linear_index(pos);&mut self.data[i] }
-    pub fn per_pixel_binary_op<F>(src1:&Image2D<T,C>,src2:&Image2D<T,C>,func:F)->Image2D<T,C>
+    pub fn per_pixel_op1<'a,F>(src1:&Image2D<T,C>,func:F)->Image2D<T,C>
+		where F:Fn(T)->T 
+	{
+		Image2D::from_fn(src1.size, 
+			|xy|{
+				let pa=*src1.at(xy);
+				let mut tmp=[T::default();C];
+				for i in 0..C{tmp[i]=func(*pa.index(i))}
+				tmp
+			}
+		)
+	}
+
+    pub fn per_pixel_op2<F>(src1:&Image2D<T,C>,src2:&Image2D<T,C>,func:F)->Image2D<T,C>
 		where F:Fn(T,T)->T 
 	{	
 		Image2D::from_fn(src1.size, 
@@ -303,7 +337,7 @@ impl<T:ImgComp+DeserializeOwned,const C:usize> Image2D<T,C> {
 			}
 		)
 	}
-	pub fn per_pixel_trinary_op<F>(src1:&Image2D<T,C>,src2:&Image2D<T,C>,src3:&Image2D<T,1>,func:F)->Image2D<T,C> 
+	pub fn per_pixel_op3<F>(src1:&Image2D<T,C>,src2:&Image2D<T,C>,src3:&Image2D<T,C>,func:F)->Image2D<T,C> 
 		where F:Fn(T,T,T)->T 
 	{	Image2D::from_fn(src1.size,
 		|pos|{
@@ -323,18 +357,6 @@ impl<T:ImgComp+DeserializeOwned,const C:usize> Image2D<T,C> {
 				let (v1,v2,v3)=(src1.at(pos),src2.at(pos),src3.at(pos));
 				// 'blend' = single channel for last parameter; it is broadcast
 				for i in 0..C{tmp[i]=func(*v1.index(i),*v2.index(i),*v3.index(0));}
-				tmp
-			}
-		)
-	}
-    pub fn per_pixel_unary_op<'a,F>(src1:&Image2D<T,C>,func:F)->Image2D<T,C>
-		where F:Fn(T)->T 
-	{
-		Image2D::from_fn(src1.size, 
-			|xy|{
-				let pa=*src1.at(xy);
-				let mut tmp=[T::default();C];
-				for i in 0..C{tmp[i]=func(*pa.index(i))}
 				tmp
 			}
 		)
@@ -361,63 +383,41 @@ pub fn clamp<T:PartialOrd+Copy>(x:T,lo:T,hi:T)->T{
 	if x<lo {lo} else if x<hi {x} else {hi}
 }
 
-    // "node definitions" is just UI over FUNCTIONS
-    // macro will generate the NodeTypes etc etc etc
-    // caveat - parameter types must be listed in some kind of DataTypes enum?
-    // guts of supporting implementation in impl Image{} etc
-    // fn Image::per_pixel_binary_op(src1:&Image,src2:&Image, &Fn((usize,usize),a:f32,b:f32)->f32) ->Image
-
+// "node definitions" is just UI over FUNCTIONS
+// macro will generate the NodeTypes etc etc etc
+// caveat - parameter types must be listed in some kind of DataTypes enum?
+// guts of supporting implementation in impl Image{} etc
+// fn Image::per_pixel_binary_op(src1:&Image,src2:&Image, &Fn((usize,usize),a:f32,b:f32)->f32) ->Image
 define_fnodes!{
-    pub fn img_add(
-        src1:&Image2dRGBA,
-        src2:&Image2dRGBA
-		)->Image2dRGBA
-    {
-        Image2dRGBA::per_pixel_binary_op(src1,src2,|a,b|a+b) 
-    }
-	
-    pub fn img_sub(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2dRGBA::per_pixel_binary_op(src1,src2,|a,b|a-b)}
-    pub fn img_mul(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2dRGBA::per_pixel_binary_op(src1,src2,|a,b|a*b)}
-    pub fn img_mul_add(src1:&Image2dRGBA,src2:&Image2dRGBA,src3:&Image2dRGBA)->Image2dRGBA{
-		let tmp=img_mul(src1,src2);
-		img_add(&tmp, src2)
-	}
-	pub fn img_clamp(src1:&Image2dRGBA,lo:&FloatDefaultZero,hi:&FloatDefaultOne)->Image2dRGBA{Image2dRGBA::per_pixel_unary_op(src1,|a| self::clamp(a,lo.0,hi.0))}
-    pub fn img_add_const(src1:&Image2dRGBA,val:&FloatDefaultZero)->Image2dRGBA{Image2dRGBA::per_pixel_unary_op(src1,|a| a+val.0)}
-    pub fn img_mul_const(src1:&Image2dRGBA,val:&FloatDefaultZero)->Image2dRGBA{Image2dRGBA::per_pixel_unary_op(src1,|a| a*val.0)}
-	pub fn img_add_mul_const(src1:&Image2dRGBA,val1:&FloatDefaultOne,val2:&FloatDefaultZero)->Image2dRGBA{
-		let tmp=img_mul_const(src1,&FloatDefaultZero(val1.0));
+    pub fn img_add(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_op2(src1,src2,|a,b|a+b)}
+    pub fn img_sub(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_op2(src1,src2,|a,b|a-b)}
+    pub fn img_mul(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_op2(src1,src2,|a,b|a*b)}
+    pub fn img_add_const(src1:&Image2dRGBA,val:&Float32)->Image2dRGBA{Image2dRGBA::per_pixel_op1(src1,|a| a+val.0)}
+    pub fn img_mul_const(src1:&Image2dRGBA,val:&Float32)->Image2dRGBA{Image2dRGBA::per_pixel_op1(src1,|a| a*val.0)}
+	pub fn img_add_mul_const(src1:&Image2dRGBA,val1:&Float32,val2:&Float32)->Image2dRGBA{
+		let tmp=img_mul_const(src1,&Float32(val1.0));
 		img_add_const(&tmp,val2)
 	}
-    pub fn img_pow(src1:&Image2dRGBA,val:&FloatDefaultOne)->Image2dRGBA{Image2D::per_pixel_unary_op(src1,|a| a.powf(val.0))}
-    pub fn img_sin(src1:&Image2dRGBA,freq:&FloatDefaultOne)->Image2dRGBA{Image2D::per_pixel_unary_op(src1,|a| (a*freq.0).sin())}
-    pub fn img_grainmerge(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_binary_op(src1,src2,|a,b|a+b-0.5)}
-    pub fn img_min(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_binary_op(src1,src2,|a,b|if a<b{a}else{b})}
-    pub fn img_max(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_binary_op(src1,src2,|a,b|if a>b{a}else{b})}
-    pub fn img_noise(src1:&FloatDefaultOne)->Image2dRGBA{
+    pub fn img_pow(src1:&Image2dRGBA,val:&Float32)->Image2dRGBA{Image2D::per_pixel_op1(src1,|a| a.powf(val.0))}
+    pub fn img_sin(src1:&Image2dRGBA,freq:&Float32)->Image2dRGBA{Image2D::per_pixel_op1(src1,|a| (a*freq.0).sin())}
+    pub fn img_grainmerge(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_op2(src1,src2,|a,b|a+b-0.5)}
+    pub fn img_min(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_op2(src1,src2,|a,b|if a<b{a}else{b})}
+    pub fn img_max(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{Image2D::per_pixel_op2(src1,src2,|a,b|if a>b{a}else{b})}
+    pub fn img_noise(src1:&Float32)->Image2dRGBA{
 		let mut rnd=Rnd(0xf983423); 
 		Image2D::from_fn(v2make(64,64), |xy|rnd.float4())
 	}
-	
-
-    pub fn img_fractal(dim:&FloatDefaultOne)->Image2dRGBA{let mut rnd=Rnd(0x8523912); Image2D::from_fn(v2make(64,64),|_xy| [rnd.float(),rnd.float(),rnd.float(),rnd.float()])  }
-    pub fn img_blend(src1:&Image2dRGBA,src2:&Image2dRGBA,src3:&Image2dLuma)->Image2dRGBA{
-        Image2dRGBA::per_pixel_trinary_blend(src1,src2,src3,|a,b,f| (b-a)*f+a)
+    pub fn img_fractal(dim:&Float32)->Image2dRGBA{let mut rnd=Rnd(0x8523912); Image2D::from_fn(v2make(64,64),|_xy| [rnd.float(),rnd.float(),rnd.float(),rnd.float()])  }
+    pub fn img_blend(src1:&Image2dRGBA,src2:&Image2dRGBA,src3:&Image2dRGBA)->Image2dRGBA{
+        Image2dRGBA::per_pixel_op3(src1,src2,src3,|a,b,f| (b-a)*f+a)
     }
     //pub fn img_warp(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{let rnd=Rnd::new(seed); Image::from_fn(src1.size,|_xy| [rnd.float(),rnd.float(),rnd.float(),rnd.float()])  }
  
     pub fn img_hardlight(src1:&Image2dRGBA,src2:&Image2dRGBA)->Image2dRGBA{ // from photoshop blend mdoes..
-        Image2D::per_pixel_binary_op(src1,src2,
+        Image2D::per_pixel_op2(src1,src2,
             |a,b| if b<0.5 { a*b*2.0} else { 1.0- (1.0-a)*(1.0-b) * 2.0}
         )
     }
-    //pub fn img_split_channels(
-        //src1:&Image2dRGBA
-    //) -> Image4
-    //{
-		//unimplemented!()
-    //}
-
     
 }
 
